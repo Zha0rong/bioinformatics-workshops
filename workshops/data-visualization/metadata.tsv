@@ -1,0 +1,11 @@
+Sample	Condition	Timepoint
+infected_4h_1	Infected	4
+infected_4h_2	Infected	4
+infected_12h_1	Infected	12
+infected_12h_2	Infected	12
+infected_24h_1	Infected	24
+infected_24h_2	Infected	24
+mock_4h_1	Mock	4
+mock_4h_2	Mock	4
+mock_24h_1	Mock	24
+mock_24h_2	Mock	24
