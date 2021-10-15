@@ -1,0 +1,225 @@
+---
+title: "Data Visualization Workshop"
+author: "Anastasia, Jamie, Zhaorong"
+date: "04/18/2021"
+output: 
+  
+  html_document:
+    toc: true
+    toc_float:
+      toc_collapsed: true
+      toc_depth: 4
+    number_sections: true
+    fig_caption: yes
+    theme: cerulean
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(ggplot2)
+library(pheatmap)
+
+
+```
+
+## Read in count matrix and metadata
+
+Use read.csv() and read.table() to read in the count matrix and metadata.
+
+```{r read in samples and metadata}
+metadata=read.table('metadata.tsv',stringsAsFactors = F,row.names = 1,header = T,as.is = T)
+
+Counts=read.csv('Counts.csv',row.names = 1,header = T,as.is = T)
+
+head(metadata)
+
+head(Counts)
+```
+
+## Select n top variable genes
+
+There are more than 60,000 genes in this count matrix.
+
+And in order to make the practice more efficient, we will use 3000 genes with largest variance.
+
+Finding these genes is the first task in practice.
+
+The function will take in a count matrix for calculation and an integer indicating the number of genes, return a vector of gene names being selected.
+
+```{r Select n top variable genes, fig.width=10,fig.height=10}
+
+top_n_variable_genes <- function(Count_matrix,n) {
+  #This function returns the names of top variable features.
+  variance = apply(Counts,1,var)
+  variance = variance[order(variance,decreasing = T)]
+  Results = names(variance[seq(1,n)])
+  return(Results)
+}
+
+Top_3000_genes=top_n_variable_genes(Counts,n = 3000)
+
+
+
+```
+
+## Run PCA
+
+Principle Component Analysis is a popular tools to reduce dimensions on high dimension data.
+
+In this case, we want to reduce the dimensions of data from 3000 to 2.
+
+We will use Counts per Million to normalize the data in this practice. There are many ways to normalize the data.
+
+Ways to calculate Counts per Million: for each sample, divided each gene counts by the sum of all counts in the sample, and then multiply by 1 million (10e6).
+
+```{r PCA, fig.width=10,fig.height=10}
+
+CPM_calculation <- function(Counts) {
+  #This function returns Counts per Million Matrix
+  Results = (Counts/colSums(Counts))*10e6
+  return(Results)
+}
+
+CPM=CPM_calculation(Counts[Top_3000_genes,])
+
+LogCPM=log10(CPM+1)
+
+PCA = prcomp((LogCPM))
+
+summary(PCA)
+```
+
+Here we will use the first 2 principle components to visualize the data.
+
+```{r PCA visualization, fig.width=10,fig.height=10}
+
+PCA.figure=PCA$rotation
+
+# In PCA object, PCA$rotation shows the principle components embeddings of the samples.
+
+PCA_plot <- function(PCA_dimension_reduction_matrix) {
+  #This function returns PCA plot
+  require(ggplot2)
+  Results=ggplot(data.frame(PCA_dimension_reduction_matrix),aes(x=PC1,y=PC2))+geom_point()
+  
+  return(Results)
+}
+
+PCA_plot(PCA.figure)
+
+```
+
+### Bonus: Colouring and shaping the points on PCA plots based on sample information
+
+The first plot is not very helpful in visualizing, we need to overlay different information on the plot so that it is more informative.
+
+```{r PCA visualization advance, fig.width=10,fig.height=10}
+PCA.figure=merge(metadata,PCA$rotation,by = 0)
+#Merge the PCA embeddings with the metadata
+PCA.figure$Timepoint=factor(PCA.figure$Timepoint)
+# In PCA object, PCA$rotation shows the principle components embeddings of the samples.
+head (PCA.figure)
+PCA_plot_advance <- function(PCA_dimension_reduction_matrix_with_sample_information) {
+  #This function returns PCA plot with different colors indicating Condition and different shape indicating Timepoint.
+  require(ggplot2)
+  Results=ggplot(data.frame(PCA_dimension_reduction_matrix_with_sample_information),aes(x=PC1,y=PC2,colour=Condition,shape=Timepoint))+geom_point()
+  
+  return(Results)
+}
+PCA_plot_advance(PCA.figure)
+```
+
+## Generate a Heatmap showing relationship between samples.
+
+In order to see the relationship between samples, correlation tests are used.
+
+In this case we use a pacakge called 'Pheatmap'
+
+```{r Correlation_test, fig.width=10,fig.height=10}
+
+correlation_test=cor((LogCPM),method = 'spearman')
+
+library(pheatmap)
+
+pheatmap(correlation_test)
+#Then we add sample information to the heatmap
+
+pheatmap(correlation_test,annotation_row = metadata,annotation_col = metadata)
+
+```
+
+Sometimes showing gene expression of samples using heatmap is also a good idea.
+
+```{r gene expression heatmap, fig.width=10,fig.height=10}
+
+pheatmap(LogCPM[c('IFNL1','IFNL2','IFNL3',
+                  'STAT1','STAT2'
+                  ),],annotation_col = metadata,show_colnames = F,display_numbers = T)
+
+
+
+```
+
+## Volcano Plot
+
+Volcano plot is a type of plot commonly used to display results from differential analysis.
+
+The x axis is the log fold change, y axis is the p value.
+
+The differential expression analysis has been done.
+
+In the results, the log2FoldChange shows number of folds change between two condition (in this case, infected vs control).
+
+The adjusted p value shows the significance of the changes in gene expression.
+
+
+```{r volcano_plot, fig.width=10,fig.height=10}
+
+Differential_expression_analysis=read.csv('Differential.expression.analysis.csv',header = T,row.names = 1)
+#log2FoldChange is the log2 fold change, padj is the adjusted p value.
+
+head(Differential_expression_analysis)
+
+
+volcano.plot <- function(Differential_expression_analysis) {
+  require(ggplot2)
+  
+  results=ggplot(Differential_expression_analysis,aes(x=log2FoldChange,y=-log10(padj)))+geom_point()
+  return(results)
+  
+}
+
+volcano.plot(Differential_expression_analysis)
+
+
+```
+
+Again, the volcano plot without color is not quite informative, we need to set up threshold to color the differentially expressed genes.
+
+Let us set the threshold at log2 fold change larger than 1 or smaller than -1, and adjusted p value (padj) smaller than 0.05
+
+```{r volcano_plot advance, fig.width=10,fig.height=10}
+
+volcano.plot_advance <- function(Differential_expression_analysis,lfcthreshold=1,pvalthreshold=0.05) {
+  require(ggplot2)
+Differential_expression_analysis$color='grey'
+for (i in 1:nrow(Differential_expression_analysis)) {
+if (Differential_expression_analysis$log2FoldChange[i]>1&Differential_expression_analysis$padj[i]<0.05) {
+Differential_expression_analysis$color[i]='red'
+}
+if (Differential_expression_analysis$log2FoldChange[i]<(-1)&Differential_expression_analysis$padj[i]<0.05) {
+Differential_expression_analysis$color[i]='blue'
+}
+}
+Differential_expression_analysis$color=factor(Differential_expression_analysis$color,levels = c('blue','grey','red'))
+  results=ggplot(Differential_expression_analysis,aes(x=log2FoldChange,y=-log10(padj),colour=color))+geom_point()+scale_color_manual(values = c('blue','grey','red'))
+  return(results)
+  
+}
+
+volcano.plot_advance(Differential_expression_analysis,lfcthreshold = 2,pvalthreshold = 0.05)
+
+
+```
